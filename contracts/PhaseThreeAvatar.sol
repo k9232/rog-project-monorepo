@@ -52,6 +52,7 @@ contract PhaseThreeAvatar is ERC721AQueryable, ERC2981, ConfirmedOwner, Pausable
     error ExceedMaxTokens();
     error TokenNotExist();
     error Revealed();
+    error NotRevealed();
     error InvalidInput();
     error InvalidTimestamp();
     error InvalidSignature();
@@ -129,8 +130,42 @@ contract PhaseThreeAvatar is ERC721AQueryable, ERC2981, ConfirmedOwner, Pausable
      */
     function tokenURI(uint256 _tokenId) public view override(IERC721A, ERC721A) returns (string memory _tokenURI) {
         if (!_exists(_tokenId)) revert TokenNotExist();
+        if (!revealed) revert NotRevealed();
 
-        return string(abi.encodePacked(uriPrefix, _tokenId.toString(), uriSuffix));
+        // Derive a seed-based affine permutation over [0, maxSupply-1]
+        // meta = (a * tokenIndex + b) mod N, where gcd(a, N) == 1 to ensure bijection
+        uint256 N = uint256(maxSupply);
+        (uint256 a, uint256 b) = _derivePermutationParams(N);
+
+        uint256 zeroIndexedToken = _tokenId - 1;
+        uint256 zeroIndexedMeta = addmod(mulmod(a, zeroIndexedToken, N), b, N);
+        uint256 metadataId = zeroIndexedMeta + 1; // 1..maxSupply
+
+        return string(abi.encodePacked(uriPrefix, metadataId.toString(), uriSuffix));
+    }
+
+    function _gcd(uint256 _x, uint256 _y) internal pure returns (uint256) {
+        while (_y != 0) {
+            uint256 temp = _y;
+            _y = _x % _y;
+            _x = temp;
+        }
+        return _x;
+    }
+
+    function _derivePermutationParams(uint256 _modulus) internal view returns (uint256 a, uint256 b) {
+        require(_modulus > 1, "Invalid modulus");
+        // Derive candidates from the seed
+        bytes32 ha = keccak256(abi.encodePacked(randomSeedMetadata, "a"));
+        bytes32 hb = keccak256(abi.encodePacked(randomSeedMetadata, "b"));
+        a = uint256(ha) % _modulus;
+        if (a == 0) a = 1;
+        // Ensure a is coprime to modulus
+        while (_gcd(a, _modulus) != 1) {
+            a = (a + 1) % _modulus;
+            if (a == 0) a = 1;
+        }
+        b = uint256(hb) % _modulus;
     }
 
     function _startTokenId() internal pure override returns (uint256) {
