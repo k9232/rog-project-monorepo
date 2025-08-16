@@ -23,7 +23,7 @@ export const DEPLOY_PARAMS = [
 export const RUNTIME_PARAMS = {
   soulboundStartTime: Math.floor(Date.now() / 1000),
   soulboundEndTime: Math.floor(Date.now() / 1000) + (7 * 24 * 3600),
-  publicStartTime: Math.floor(Date.now() / 1000) + (7 * 24 * 3600),
+  publicStartTime: Math.floor(Date.now() / 1000) + (7 * 24 * 3600) + 1,
   mintPrice: "10000000000000000"
 }
 
