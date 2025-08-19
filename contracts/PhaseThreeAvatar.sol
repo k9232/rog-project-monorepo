@@ -44,27 +44,6 @@ contract PhaseThreeAvatar is ERC721AQueryable, ERC2981, ConfirmedOwner, Pausable
     bool public revealed;
     uint256 public randomSeedMetadata;
 
-    /// @dev blind box uri
-    string public goldBlindBoxURI;
-    string public redBlindBoxURI; 
-    string public blueBlindBoxURI;
-
-    /// @dev address => blind box type
-    mapping(address => uint8) public addressToBlindBoxType;
-
-    /// @dev blind box supply
-    uint256 public goldBoxSupply = 100;
-    uint256 public redBoxSupply = 300;
-    uint256 public blueBoxSupply = 600;
-
-    /// @dev blind box minted
-    uint256 public goldBoxMinted = 0;
-    uint256 public redBoxMinted = 0;
-    uint256 public blueBoxMinted = 0;
-
-    mapping(address => bool) public hasMintedSoulbound;
-    mapping(address => bool) public hasMintedPublic;
-
     /*///////////////////////////////////////////////////////////////
                             Events or Errors
     //////////////////////////////////////////////////////////////*/
@@ -77,9 +56,6 @@ contract PhaseThreeAvatar is ERC721AQueryable, ERC2981, ConfirmedOwner, Pausable
     error InvalidInput();
     error InvalidTimestamp();
     error InvalidSignature();
-    error BoxTypeNotAssigned();
-    error BoxTypeSoldOut();
-    error InvalidBoxType();
 
     event MintTokens(address to, uint256 quantity, uint256 totalSupply);
     event URISet(string uriPrefix, string uriSuffix);
@@ -152,19 +128,19 @@ contract PhaseThreeAvatar is ERC721AQueryable, ERC2981, ConfirmedOwner, Pausable
      * @dev Retrieve token URI to get the metadata of a token
      * @param _tokenId TokenId which caller wants to get the metadata of
      */
-    function tokenURI(uint256 _tokenId) public view override(IERC721A, ERC721A) returns (string memory) {
+    function tokenURI(uint256 _tokenId) public view override(IERC721A, ERC721A) returns (string memory _tokenURI) {
         if (!_exists(_tokenId)) revert TokenNotExist();
+        if (!revealed) revert NotRevealed();
 
-        if (!revealed) {
-            address tokenOwner = ownerOf(_tokenId);
-            return getBlindBoxURI(tokenOwner);
-        }
-        
+        // Derive a seed-based affine permutation over [0, maxSupply-1]
+        // meta = (a * tokenIndex + b) mod N, where gcd(a, N) == 1 to ensure bijection
         uint256 N = uint256(maxSupply);
         (uint256 a, uint256 b) = _derivePermutationParams(N);
+
         uint256 zeroIndexedToken = _tokenId - 1;
         uint256 zeroIndexedMeta = addmod(mulmod(a, zeroIndexedToken, N), b, N);
-        uint256 metadataId = zeroIndexedMeta + 1;
+        uint256 metadataId = zeroIndexedMeta + 1; // 1..maxSupply
+
         return string(abi.encodePacked(uriPrefix, metadataId.toString(), uriSuffix));
     }
 
@@ -214,11 +190,9 @@ contract PhaseThreeAvatar is ERC721AQueryable, ERC2981, ConfirmedOwner, Pausable
     /**
      * @dev Mint one token to the corresponding soulbound token holder as owner
      * @param _tokenId TokenId of the soulbound token
-     * @param _signature Signature used to verify the address is in the list
      * @notice This function is only available after the soulbound mint time
      * @notice This function is only available when the total supply is less than the maximum supply
      * @notice This function is only available when the soulbound token holder has not minted the token
-     * @notice User must have assigned blind box type and remaining supply
      */
     function mintBySoulboundHolder(uint256 _tokenId, bytes calldata _signature) external payable {
         if (msg.value != mintPrice) revert InvalidInput();
@@ -227,16 +201,6 @@ contract PhaseThreeAvatar is ERC721AQueryable, ERC2981, ConfirmedOwner, Pausable
             revert InvalidTimestamp();
         }
         if (!verify(_tokenId, signer, _signature)) revert InvalidSignature();
-        
-        // Check user's assigned blind box type
-        uint8 userBoxType = addressToBlindBoxType[msg.sender];
-        if (userBoxType == 0) revert BoxTypeNotAssigned();
-        
-        // Check if assigned box type has remaining supply
-        if (!hasBoxSupply(userBoxType)) revert BoxTypeSoldOut();
-        
-        // Update box type minted count
-        _updateBoxMintedCount(userBoxType);
 
         avatarToSoulbound[totalSupply()] = _tokenId;
 
@@ -250,19 +214,11 @@ contract PhaseThreeAvatar is ERC721AQueryable, ERC2981, ConfirmedOwner, Pausable
      * @notice This function is only available after the public mint time
      * @notice This function is only available when the total supply is less than the maximum supply
      * @notice This function is only available when the msg.value is greater than the public mint price
-     * @notice During public phase, randomly assigns available box type from remaining supply
      */
     function mintByAllUser() external payable whenNotPaused {
         if (msg.value != mintPrice) revert InvalidInput();
         if (totalSupply() + 1 > maxSupply) revert ExceedMaxTokens();
         if (block.timestamp < publicStartMintTime) revert InvalidTimestamp();
-        
-        uint8 assignedBoxType = getRandomAvailableBox();
-        if (assignedBoxType == 0) revert BoxTypeSoldOut();
-        
-        addressToBlindBoxType[msg.sender] = assignedBoxType;
-        
-        _updateBoxMintedCount(assignedBoxType);
 
         _safeMint(msg.sender, 1);
 
@@ -278,13 +234,8 @@ contract PhaseThreeAvatar is ERC721AQueryable, ERC2981, ConfirmedOwner, Pausable
      * @param _to Address to transfer the tokens
      * @param _quantity Designated amount of tokens
      */
-    function mintGiveawayTokens(address _to, uint256 _quantity, uint8 _boxType) external onlyMintRole {
+    function mintGiveawayTokens(address _to, uint256 _quantity) external onlyMintRole {
         if (totalSupply() + _quantity > maxSupply) revert ExceedMaxTokens();
-        if (_boxType < 1 || _boxType > 3) revert InvalidBoxType();
-        
-        addressToBlindBoxType[_to] = _boxType;
-        _updateBoxMintedCount(_boxType);
-        
         _safeMint(_to, _quantity);
         emit MintTokens(_to, _quantity, totalSupply());
     }
@@ -460,135 +411,5 @@ contract PhaseThreeAvatar is ERC721AQueryable, ERC2981, ConfirmedOwner, Pausable
      */
     function getRandomSeedStatus() external view returns (uint256 randomSeed, bool isRevealed) {
         return (randomSeedMetadata, revealed);
-    }
-
-    function getBlindBoxURI(address owner) internal view returns (string memory) {
-        uint8 boxType = addressToBlindBoxType[owner];
-        if (boxType == 1) return goldBlindBoxURI;
-        if (boxType == 2) return redBlindBoxURI;
-        if (boxType == 3) return blueBlindBoxURI;
-        return blueBlindBoxURI;
-    }
-
-    /**
-     * @dev Set the URI for different blind box types
-     * @param _goldURI URI for gold blind box metadata
-     * @param _redURI URI for red blind box metadata  
-     * @param _blueURI URI for blue blind box metadata
-     */
-    function setBlindBoxURIs(
-        string memory _goldURI,
-        string memory _redURI, 
-        string memory _blueURI
-    ) external onlyOwner {
-        goldBlindBoxURI = _goldURI;
-        redBlindBoxURI = _redURI;
-        blueBlindBoxURI = _blueURI;
-    }
-
-    /**
-     * @dev Batch set blind box types for multiple addresses
-     * @param addresses Array of addresses to set blind box types for
-     * @param boxTypes Array of box types (1=gold, 2=red, 3=blue)
-     * @notice Arrays must have the same length
-     */
-    function setAddressBlindBoxTypes(
-        address[] memory addresses,
-        uint8[] memory boxTypes
-    ) external onlyOwner {
-        require(addresses.length == boxTypes.length, "Length mismatch");
-        for (uint i = 0; i < addresses.length; i++) {
-            addressToBlindBoxType[addresses[i]] = boxTypes[i];
-        }
-    }
-
-    /**
-     * @dev Get available box type based on current phase
-     * @return Box type: 1=gold, 2=red, 3=blue, 0=not available
-     * @notice During soulbound phase, returns pre-assigned box type for address
-     * @notice After soulbound phase, all remaining boxes enter public pool
-     */
-    function getAvailableBoxType() public view returns (uint8) {
-        if (block.timestamp >= publicStartMintTime) {
-            uint256 totalRemaining = getRemainingBoxSupply(1) + getRemainingBoxSupply(2) + getRemainingBoxSupply(3);
-            return totalRemaining > 0 ? 1 : 0;
-        } else if (block.timestamp >= soulboundStartMintTime && block.timestamp <= soulboundEndMintTime) {
-            uint8 userBoxType = addressToBlindBoxType[msg.sender];
-            if (userBoxType == 0 || !hasBoxSupply(userBoxType)) {
-                return 0;
-            }
-            return userBoxType;
-        }
-        
-        return 0;
-    }
-
-    /**
-     * @dev Generate random available box type from public pool
-     * @return Box type: 1=gold, 2=red, 3=blue, 0=sold out
-     * @notice Uses block data and user address to generate weighted random selection
-     * @notice Prioritizes remaining supply - higher remaining supply has higher chance
-     */
-    function getRandomAvailableBox() internal view returns (uint8) {
-        uint256 goldRemaining = getRemainingBoxSupply(1);
-        uint256 redRemaining = getRemainingBoxSupply(2);
-        uint256 blueRemaining = getRemainingBoxSupply(3);
-        
-        uint256 totalRemaining = goldRemaining + redRemaining + blueRemaining;
-        if (totalRemaining == 0) return 0;
-        
-        uint256 randomNum = uint256(keccak256(abi.encodePacked(
-            block.timestamp,
-            block.difficulty,
-            msg.sender,
-            totalSupply(),
-            blockhash(block.number - 1)
-        ))) % totalRemaining;
-        
-        if (randomNum < goldRemaining) {
-            return 1;
-        } else if (randomNum < goldRemaining + redRemaining) {
-            return 2;
-        } else {
-            return 3;
-        }
-    }
-
-    /**
-     * @dev Check if specific box type has remaining supply
-     * @param boxType Box type to check (1=gold, 2=red, 3=blue)
-     * @return hasSupply True if box type has remaining supply
-     */
-    function hasBoxSupply(uint8 boxType) public view returns (bool hasSupply) {
-        if (boxType == 1) return goldBoxMinted < goldBoxSupply;
-        if (boxType == 2) return redBoxMinted < redBoxSupply;  
-        if (boxType == 3) return blueBoxMinted < blueBoxSupply;
-        return false;
-    }
-
-    /**
-     * @dev Update minted count for specific box type
-     * @param boxType Box type to update (1=gold, 2=red, 3=blue)
-     */
-    function _updateBoxMintedCount(uint8 boxType) internal {
-        if (boxType == 1) {
-            goldBoxMinted++;
-        } else if (boxType == 2) {
-            redBoxMinted++;
-        } else if (boxType == 3) {
-            blueBoxMinted++;
-        }
-    }
-
-    /**
-     * @dev Get remaining supply for specific box type
-     * @param boxType Box type to check (1=gold, 2=red, 3=blue)
-     * @return remaining Remaining supply for the box type
-     */
-    function getRemainingBoxSupply(uint8 boxType) public view returns (uint256 remaining) {
-        if (boxType == 1) return goldBoxSupply - goldBoxMinted;
-        if (boxType == 2) return redBoxSupply - redBoxMinted;
-        if (boxType == 3) return blueBoxSupply - blueBoxMinted;
-        return 0;
     }
 }
