@@ -39,6 +39,7 @@ contract PhaseThreeAvatar is ERC721AQueryable, ERC2981, ConfirmedOwner, Pausable
 
     /// @dev avatar token id => soulbound token id
     mapping(uint256 => uint256) public avatarToSoulbound;
+    mapping(uint256 => uint256) public soulboundToAvatar;
 
     /// @dev Backend random number related settings
     bool public revealed;
@@ -56,6 +57,7 @@ contract PhaseThreeAvatar is ERC721AQueryable, ERC2981, ConfirmedOwner, Pausable
     error InvalidInput();
     error InvalidTimestamp();
     error InvalidSignature();
+    error SoulboundTokenAlreadyMinted();
 
     event MintTokens(address to, uint256 quantity, uint256 totalSupply);
     event URISet(string uriPrefix, string uriSuffix);
@@ -196,17 +198,20 @@ contract PhaseThreeAvatar is ERC721AQueryable, ERC2981, ConfirmedOwner, Pausable
      */
     function mintBySoulboundHolder(uint256 _tokenId, bytes calldata _signature) external payable {
         if (msg.value != mintPrice) revert InvalidInput();
-        if (totalSupply() + 1 > maxSupply) revert ExceedMaxTokens();
+        uint256 currentId = totalSupply() + 1;
+        if (currentId > maxSupply) revert ExceedMaxTokens();
         if (block.timestamp < soulboundStartMintTime || block.timestamp > soulboundEndMintTime) {
             revert InvalidTimestamp();
         }
         if (!verify(_tokenId, signer, _signature)) revert InvalidSignature();
+        if (soulboundToAvatar[_tokenId] != 0) revert SoulboundTokenAlreadyMinted();
 
-        avatarToSoulbound[totalSupply()] = _tokenId;
+        soulboundToAvatar[_tokenId] = currentId;
+        avatarToSoulbound[currentId] = _tokenId;
 
         _safeMint(msg.sender, 1);
 
-        emit MintTokens(msg.sender, 1, totalSupply());
+        emit MintTokens(msg.sender, 1, currentId);
     }
 
     /**
