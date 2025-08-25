@@ -35,30 +35,29 @@ function getNetworks(): NetworksUserConfig {
 			},
 	}
 
-	// Add optional networks only if corresponding private keys are provided
-	if (process.env.PROJECT_PK) {
-		networks.polygon = {
-			url: `https://polygon-mainnet.g.alchemy.com/v2/${alchemyApiKey}`,
-			chainId: 137,
-			accounts: [`0x${process.env.PROJECT_PK}`],
-		}
+	// Add additional networks using mnemonic
+	networks.polygon = {
+		url: `https://polygon-mainnet.g.alchemy.com/v2/${alchemyApiKey}`,
+		chainId: 137,
+		accounts: { mnemonic },
 	}
-	if (process.env.PROJECT_PK_TEST) {
-		networks.polygonAmoy = {
-			url: `https://polygon-amoy.g.alchemy.com/v2/${alchemyApiKey}`,
-			chainId: 80002,
-			accounts: [`0x${process.env.PROJECT_PK_TEST}`],
-		}
-		networks.sepolia = {
-			url: `https://eth-sepolia.g.alchemy.com/v2/${alchemyApiKey}`,
-			chainId: 11155111,
-			accounts: [`0x${process.env.PROJECT_PK_TEST}`],
-		}
-		networks.arbSepolia = {
-			url: `https://arb-sepolia.g.alchemy.com/v2/${alchemyApiKey}`,
-			chainId: 421614,
-			accounts: [`0x${process.env.PROJECT_PK_TEST}`],
-		}
+	
+	networks.polygonAmoy = {
+		url: `https://polygon-amoy.g.alchemy.com/v2/${alchemyApiKey}`,
+		chainId: 80002,
+		accounts: { mnemonic },
+	}
+	
+	networks.sepolia = {
+		url: `https://eth-sepolia.g.alchemy.com/v2/${alchemyApiKey}`,
+		chainId: 11155111,
+		accounts: { mnemonic },
+	}
+	
+	networks.arbSepolia = {
+		url: `https://arb-sepolia.g.alchemy.com/v2/${alchemyApiKey}`,
+		chainId: 421614,
+		accounts: { mnemonic },
 	}
 
 	return networks

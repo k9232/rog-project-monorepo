@@ -75,9 +75,7 @@ contract PhaseThreeAvatar is ERC721AQueryable, ERC2981, ConfirmedOwner, Pausable
         address _mintRole,
         address _signer,
         uint64 _maxSupply,
-        uint96 _royaltyFee,
-        string memory _randomSeedHash,
-        string memory _randomAlgoHash
+        uint96 _royaltyFee
     )
         ERC721A("PhaseThreeAvatar", "PTA")
         ConfirmedOwner(msg.sender)
@@ -88,8 +86,6 @@ contract PhaseThreeAvatar is ERC721AQueryable, ERC2981, ConfirmedOwner, Pausable
         treasury = _treasury;
         mintRole = _mintRole;
         signer = _signer;
-        randomSeedHash = _randomSeedHash;
-        randomAlgoHash = _randomAlgoHash;
 
         _setDefaultRoyalty(_treasury, _royaltyFee);
     }

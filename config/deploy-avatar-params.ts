@@ -11,20 +11,18 @@ import 'dotenv/config'
 // ]
 
 export const DEPLOY_PARAMS = [
-  '0xAdec0A180D24De7648ae70405b5BbA67eae45CbF',
-  '0xAdec0A180D24De7648ae70405b5BbA67eae45CbF', 
-  '0xAdec0A180D24De7648ae70405b5BbA67eae45CbF',
-  10000,
-  1000,
-  'hash',
-  'ipfshash',
+  '0x5C0436A08A1e80B11Eb4F04e7c8631B2C9AdE9dD',
+  '0x5C0436A08A1e80B11Eb4F04e7c8631B2C9AdE9dD', 
+  '0x5C0436A08A1e80B11Eb4F04e7c8631B2C9AdE9dD',
+  6020,
+  1000
 ]
 
 export const RUNTIME_PARAMS = {
   soulboundStartTime: Math.floor(Date.now() / 1000),
-  soulboundEndTime: Math.floor(Date.now() / 1000) + (7 * 24 * 3600),
-  publicStartTime: Math.floor(Date.now() / 1000) + (7 * 24 * 3600),
-  mintPrice: "10000000000000000"
+  soulboundEndTime: Math.floor(Date.now() / 1000) + (60 * 60 * 2),
+  publicStartTime: Math.floor(Date.now() / 1000) + (60 * 60 * 4),
+  mintPrice: "0"
 }
 
 module.exports = {
